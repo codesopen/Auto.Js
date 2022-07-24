@@ -1,0 +1,59 @@
+name: Android CI
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - '*'
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        id: check
+        uses: actions/checkout@v1
+      - name: set up JDK 15
+        uses: actions/setup-java@v1
+        with:
+          java-version: 15
+      - name: Build with Gradle
+        run: |
+          chmod 777 ./gradlew
+          ./gradlew inrt:assembleRelease
+          ls
+      - uses: Tlaster/android-sign@v1.2.2
+        name: Sign inrt APK
+        with:
+          releaseDirectory: |
+            inrt/build/outputs/apk/common/release
+          signingKeyBase64: ${{ secrets.ISIGNING_KEY }}
+          output: build/inrt/signed
+          alias: ${{ secrets.IALIAS }}
+          keyStorePassword: ${{ secrets.IKEY_STORE_PASSWORD }}
+          keyPassword: ${{ secrets.IKEY_PASSWORD }}
+      - name: shell
+        run: |
+          ls  build/inrt/signed
+          pwd
+          mv  build/inrt/signed/*.apk  app/src/main/assets/template.apk
+          ls  app/src/main/assets
+          ./gradlew app:assembleDev
+      - uses: Tlaster/android-sign@v1.2.2
+        name: Sign app APK
+        with:
+          releaseDirectory: |
+            app/build/outputs/apk/dev/release
+          signingKeyBase64: ${{ secrets.ASIGNING_KEY }}
+          output: build/app/signed
+          alias: ${{ secrets.AALIAS }}
+          keyStorePassword: ${{ secrets.AKEY_STORE_PASSWORD }}
+          keyPassword: ${{ secrets.AKEY_PASSWORD }}
+      - name: upload apk
+        uses: actions/upload-artifact@master
+        with:
+          name: autoxjs.apk
+          path: build/app/signed
+      - name: release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: 'build/app/signed/**'
